@@ -1,0 +1,35 @@
+USAGE "Runs some example queries on access.log file downloaded from internet"
+
+
+# create alias for parsing
+ALIAS parseAccessLog = SELECT words[6] as relPath, (words[9]=="-")?0: int(words[9]) as size, words[10][1:-1] as referer, words[-2][1:-1] as myHost
+
+IMPORT os
+
+PARAM accessLog := os.path.join(runtime.getToolPath("http"), "examples", "access.log")
+
+@echo **** Print all hosts from which come requests to access.log file
+READ $accessLog | parseAccessLog |
+   PARSE url FROM relPath, url FROM referer as referer |
+   IF url.pathComponents[-1] == "access.log" |
+   DISTINCT referer.hostname |
+   SORTBY hostname |
+STDOUT
+
+@echo **** Select requests with referer field containing query params
+@echo **** and then generate different record for each parameter (EXPAND command)   
+READ $accessLog | parseAccessLog |
+   PARSE url FROM referer |
+   IF url.query |
+   EXPAND url.params.iteritems() as name, value SELECT url.netloc, url.path |
+   SELECT netloc, path, name, value |
+STDOUT netloc=20 path=12
+
+@echo **** Parse youtube video request and responses
+PARAM httpJson := os.path.join(runtime.getToolPath("http"), "examples", "youtube-http.json")
+READ $httpJson |
+  PARSE request FROM obj["request"], response FROM obj["response"] |
+  IF request.path =~ "videoplayback" |
+  LIMIT 10 |
+  SELECT request.fullUrl, response.length, response.contentType, response.statusCode, request.userAgent |
+STDOUT

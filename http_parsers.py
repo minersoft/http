@@ -50,26 +50,52 @@ class HttpRequest(HttpCommon):
             self.relUrl = self.parsedUrl.path
             if self.parsedUrl.query:
                 self.relUrl += "?" + self.parsedUrl.query
-            self.host = self.parsedUrl.netloc
+            self.netloc = self.parsedUrl.netloc
         else:
-            self.fullUrl = "http://" + self.host + self.relUrl
-            self.host = self.headers.get("Host", "")
+            self.netloc = self.headers.get("Host", "")
+            self.fullUrl = "http://" + self.netloc + self.relUrl
         self.paramLists = urlparse.parse_qs(self.parsedUrl.query, keep_blank_values=True)
         self.params = {}
         for name, pList in self.paramLists.iteritems():
             self.params[name] = pList[-1]
         self._pathComponents = None
+        self._hostnamePort = None
     @property
     def pathComponents(self):
         if self._pathComponents is not None:
             return self._pathComponents
         self._pathComponents = self.parsedUrl.path.split("/")
+        if self.parsedUrl.path.startswith("/"):
+            del self._components[0]
         return self._pathComponents
     @property
     def path(self):
         return self.parsedUrl.path
+    @property
+    def query(self):
+        return self.parsedUrl.query
+    def _getHostnamePort(self):
+        if self._hostnamePort:
+            return
+        pos = self.netloc.find(":")
+        if pos == -1:
+            self._hostnamePort = (self.netloc, 80)
+        else:
+            try:
+                port = int(self.netloc[pos+1:])
+            except:
+                port = 0
+            self._hostnamePort = (self.netloc[:pos], port)
+    @property
+    def hostname(self):
+        self._getHostnamePort()
+        return self._hostnamePort[0]
+    @property
+    def port(self):
+        self._getHostnamePort()
+        return self._hostnamePort[1]
     def __str__(self):
-        s = self.method + " http://"+ (self.host if self.host else "?.?.?.?") + self.relUrl 
+        s = self.method + " http://"+ (self.netloc if self.netloc else "?.?.?.?") + self.relUrl 
         range = self.headers.get("range")
         if range:
             s += " range=" + range
@@ -120,22 +146,40 @@ class Url(object):
             self.params[name] = pList[-1]
         self._components = None
     @property
-    def components(self):
+    def pathComponents(self):
         """list of url path components"""
         if self._components is not None:
             return self._components
         self._components = self.parsedUrl.path.split("/")
+        if self.parsedUrl.path.startswith("/"):
+            del self._components[0]
         return self._components
     @property
     def path(self):
         """Path part of url"""
         return self.parsedUrl.path
     @property
-    def host(self):
+    def netloc(self):
         return self.parsedUrl.netloc
+    @property
+    def scheme(self):
+        return self.parsedUrl.scheme
+    @property
+    def query(self):
+        return self.parsedUrl.query
+    @property
+    def hostname(self):
+        return self.parsedUrl.hostname
+    @property
+    def port(self):
+        if self.parsedUrl.port:
+            return self.parsedUrl.port
+        if self.parsedUrl.scheme == "http":
+            return 80
+        elif self.parsedUrl.scheme == "https":
+            return 443
+        else:
+            return None
     def __str__(self):
-        s = "host=%s path=%s params=[" % (self.host, self.parsedUrl.path)
-        s += " ".join("%s=%s" % (param,value) for (param,value)  in self.params.iteritems())
-        s += "]"
-        return s
+        return urlparse.urlunparse(self.parsedUrl)
 
